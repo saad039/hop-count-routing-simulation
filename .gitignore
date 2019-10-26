@@ -1,4 +1,7 @@
+###directories
 bin/**
 bin-init/**
+.vscode/**
+###Fies
 premake/Makefile
 premake/routing.make

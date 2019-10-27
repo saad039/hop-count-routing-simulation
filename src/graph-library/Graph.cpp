@@ -124,7 +124,9 @@ void Graph::addNodes(std::vector<std::pair<double, std::string>> nodes) {
     addNode(nodePair.first, nodePair.second);
   }
 }
-
+bool Graph::addDualEdge(std::string fromNode, std::string toNode){
+  return this->addEdge(fromNode,toNode) && this->addEdge(toNode,fromNode);
+}
 bool Graph::addEdge(std::string fromNode, std::string toNode, double weight) {
   //If one of the nodes don't exist, return false
   if (nodeMap.find(fromNode) == nodeMap.end()) { return false; }
@@ -539,6 +541,7 @@ std::vector<std::string> Graph::Dijktras(std::string sourceNode, std::string tar
   //Use prevMap to get the path from Target back to Source
   std::string curr = targetNode;
   pathVec.push_back(curr);
+
   while (true) {
     curr = prevMap[curr];
     if (curr == "") { break; }
@@ -547,8 +550,44 @@ std::vector<std::string> Graph::Dijktras(std::string sourceNode, std::string tar
 
   //Reverse pathVec so the Node's are in order from Source to Target
   std::reverse(pathVec.begin(), pathVec.end());
-
+  
   return pathVec;
+}
+std::vector<std::string> Graph::getShortestPath(const std::string& sourceNode,const std::string& targetNode){
+  if(sourceNode==targetNode){
+    throw std::logic_error("Distance between same nodes is invalid");
+  }
+  auto path=this->Dijktras(sourceNode,targetNode);
+  if(path.size()==1){
+    auto newTemp=this->Dijktras(targetNode,sourceNode);
+    std::reverse(std::begin(newTemp),std::end(newTemp));
+    path=std::move(newTemp);
+    auto neighbours=this->neighborNames(sourceNode);
+    if(path.size()>=1 && std::find(std::begin(neighbours),std::end(neighbours),targetNode)!=std::end(neighbours)){
+      return path;
+    }
+  }
+  if(path.size()==1 && this->pathCheck(sourceNode,targetNode)){
+    auto neighbours=this->neighborNames(sourceNode);
+    for(const auto& n:neighbours){
+        auto upPath=this->Dijktras(n,targetNode);
+        if(upPath.size()!=1){
+          upPath.insert(std::begin(upPath),sourceNode);
+          path=std::move(upPath);
+          break;
+        }
+        else{
+           upPath=this->Dijktras(targetNode,n);
+           if(upPath.size()!=1){
+              std::reverse(std::begin(upPath),std::end(upPath));
+              upPath.insert(std::begin(upPath),sourceNode);
+              path=std::move(upPath);
+              break;
+          }
+        }
+      }
+    }
+  return path;
 }
 
 ///Djiktras: Returns an unordered_map where keys are Node names and values are the shortest weighted distance to that Node from sourceNode

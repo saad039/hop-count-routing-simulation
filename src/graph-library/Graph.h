@@ -31,6 +31,7 @@ public:
   bool addEdge(std::string fromNode, std::string toNode, double weight);
   bool addEdge(std::string fromNode, std::string toNode); //Default weight '1'
   bool addEdge(std::tuple<std::string, std::string, double> edge);
+  bool addDualEdge(std::string fromNode, std::string toNode);
   bool deleteNode(std::string targetNode);
   bool deleteEdge(std::string fromNode, std::string toNode, double weight);
   bool deleteEdge(std::string fromNode, std::string toNode); //Default weight '1'
@@ -64,7 +65,8 @@ public:
   void DFShelper(std::string sourceNode, std::string targetNode, std::unordered_map<std::string, std::string> &prevMap);
   std::vector<std::string> Dijktras(std::string sourceNode, std::string targetNode); //Returns the shortest path from source to target
   std::unordered_map<std::string, double> Dijktras(std::string sourceNode); //Returns a map where keys are nodes reachable from source and values are the shortest distance from source
-
+  std::vector<std::string> shortestPath(const std::string& sourceNode,const std::string& targetNode);
+  std::vector<std::string> getShortestPath(const std::string& sourceNode,const std::string& targetNode);
   //BellmanFord: Returns a 3-tuple containing the Dist and Prev maps, as well as a boolean for the existence of a negative cycle
   std::tuple<std::unordered_map<std::string, double>, std::unordered_map<std::string, std::string>, bool> BellmanFord(std::string sourceNode);
   std::unordered_map<std::string, double> BellmanFordDist(std::string sourceNode); //Returns just the Dist map

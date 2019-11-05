@@ -33,73 +33,6 @@ extern "C"{
 }
 
 #define BUFFER_SIZE 512
-class eventLoop{
-private:
-typedef std::size_t usint; 
-    static std::unique_ptr<eventLoop> tpInstance; // instance of eventLoop 
-    std::thread tpThread; // vector containing all the threads in the eventLoop
-    std::queue<std::function<void()>>tasks; // vector containing tasks
-    bool doKill=false; // a boolean flag to signal joining of threads
-    std::mutex mutex; // mutex for providing mutual exclusion access to tasks vector
-    std::condition_variable conVar; // condition variable to avoid busy waiting
-
-    eventLoop()
-        :tpThread(std::thread(&eventLoop::start, this))
-    {
-
-    }
-	void start() {
-		for (;;) {
-			std::function<void()> currentTask;
-			{
-				std::unique_lock<std::mutex> lock(mutex);
-				conVar.wait(lock, [&]() {return doKill || !tasks.empty(); });
-				if (this->doKill && tasks.empty())
-					break;
-				currentTask = std::move(this->tasks.front());
-				this->tasks.pop();
-			}
-			currentTask();
-		}
-	}
-	void stop() {
-		{
-			std::unique_lock<std::mutex> lock(mutex);
-			this->doKill = true;
-			conVar.notify_one();
-		}
-		tpThread.join();
-	}
-public:
-
-    static std::unique_ptr<eventLoop>& factory(){
-        if(tpInstance==nullptr)
-            tpInstance.reset(new eventLoop());
-        return tpInstance;
-    }
-    template<typename _type>
-    auto enqueue_task(_type Task) ->std::future<decltype(Task())>
-    {
-        auto lambda=std::make_shared<std::packaged_task<decltype(Task())()>>(Task);
-        {
-			std::unique_lock<std::mutex> lock(mutex); 
-            this->tasks.emplace([=](){
-                (*lambda)();
-            });
-            this->conVar.notify_one();
-        }
-        return lambda->get_future();
-    }
-    eventLoop(const eventLoop&)=delete;
-    eventLoop(const eventLoop&&)=delete;
-    eventLoop& operator=(const eventLoop&)=delete;
-    eventLoop& operator=(const eventLoop&&)=delete;
-    ~eventLoop(){
-       stop();
-    }
-};
-std::unique_ptr<eventLoop> eventLoop::tpInstance(nullptr);
-static  std::unique_ptr<eventLoop>& EventLoop = eventLoop::factory();
 //implement a server. Multiple servers can be run on multiple threads.
 //Each will be listening on a udp port
 
@@ -109,7 +42,7 @@ void handleError(const char* error){
         exit(-1);
 }
 class RoutingTable{
-    Graph network;
+    Graph netwgit push -u origin masterork;
     const std::string fileName="routing-table.txt";
     std::mutex mutex;
     std::thread th;

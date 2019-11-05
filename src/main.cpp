@@ -33,7 +33,7 @@ extern "C"{
 }
 
 #define BUFFER_SIZE 512
-//implement a server. Multiple servers can be run on multiple threads.
+//implement a server. Multiple servers can be run on multiple processes.
 //Each will be listening on a udp port
 
 std::vector<std::string> tokenizer(const std::string& str, const char delimeter);
@@ -276,17 +276,6 @@ public:
     routingServer(const routingServer&)=delete;
     routingServer& operator=(const routingServer&)=delete;
 };
-
-//port is same as name
-//number of servers
-//port,ip
-//number of clients
-//port,ip
-//number of edges
-//---------------
-//serverPort,serverIP,edgeOfServerPort (future)
-
-////serverPort,edgeOfServerPort
 
 int main(int argc, char const *argv[]){
     bool shouldClear=argc==3?false:true;

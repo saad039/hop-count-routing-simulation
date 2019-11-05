@@ -8,7 +8,118 @@
 #include <vector>
 #include <utility>
 #include <tuple>
+#include<limits>
+#include<iostream>
+class EdgeNode{
+public:
+    int key;
+    int weight;
+    EdgeNode *next;
+    EdgeNode(int key, int weight)
+    {
+        this->key = key;
+        this->weight = weight;
+        this->next = NULL;
+    }
+};
 
+class myGraph{
+    static const int MAXV = 65534;
+    bool directed;
+public:
+    EdgeNode *edges[MAXV + 1];
+    ~myGraph() {}
+    myGraph(bool directed)
+    {
+        this->directed = directed;
+        for (int i = 1; i < (MAXV + 1); i++)
+        {
+            this->edges[i] = NULL;
+        }
+    }
+    int getMax() const{
+        return MAXV;
+    }
+    void insert_edge(int x, int y, int weight, bool directed){
+        if (x > 0 && x < (MAXV + 1) && y > 0 && y < (MAXV + 1)){
+            EdgeNode *edge = new EdgeNode(y, weight);
+            edge->next = this->edges[x];
+            this->edges[x] = edge;
+            if (!directed)
+            {
+                insert_edge(y, x, weight, true);
+            }
+        }
+    }
+    void print(){
+        for (int v = 1; v < (MAXV + 1); v++){
+            if (this->edges[v] != NULL)
+            {
+                std::cout << "Vertex " << v << " has neighbors: " << std::endl;
+                EdgeNode *curr = this->edges[v];
+                while (curr != NULL)
+                {
+                    std::cout << curr->key << std::endl;
+                    curr = curr->next;
+                }
+            }
+        }
+    }
+};
+////////////
+static void init_vars(bool discovered[], int distance[], int parent[],int MAXV)
+{
+    for (int i = 1; i < (MAXV + 1); i++){
+        discovered[i] = false;
+        distance[i] = std::numeric_limits<int>::max();
+        parent[i] = -1;
+    }
+}
+
+static void dijkstra_shortest_path(myGraph *g, int parent[], int distance[], int start)
+{
+
+    int MAXV=g->getMax();
+    bool discovered[MAXV + 1];
+    EdgeNode *curr;
+    int v_curr;
+    int v_neighbor;
+    int weight;
+    int smallest_dist;
+    init_vars(discovered, distance, parent,MAXV);
+    distance[start] = 0;
+    v_curr = start;
+    while (discovered[v_curr] == false){
+
+        discovered[v_curr] = true;
+        curr = g->edges[v_curr];
+        while (curr != NULL){
+            v_neighbor = curr->key;
+            weight = curr->weight;
+            if ((distance[v_curr] + weight) < distance[v_neighbor])
+            {
+                distance[v_neighbor] = distance[v_curr] + weight;
+                parent[v_neighbor] = v_curr;
+            }
+            curr = curr->next;
+        }
+        //set the next current vertex to the vertex with the smallest distance
+        smallest_dist = std::numeric_limits<int>::max();
+        for (int i = 1; i < (MAXV + 1); i++){
+            if (!discovered[i] && (distance[i] < smallest_dist)){
+                v_curr = i;
+                smallest_dist = distance[i];
+            }
+        }
+    }
+}
+
+static void print_shortest_path(int v, int parent[],int MAXV,std::vector<int>& paths){
+    if (v > 0 && v < (MAXV + 1) && parent[v] != -1){
+        paths.push_back(parent[v]);
+        print_shortest_path(parent[v], parent,MAXV,paths);
+    }
+}
 class Graph {
 
 private:
@@ -67,6 +178,7 @@ public:
   std::unordered_map<std::string, double> Dijktras(std::string sourceNode); //Returns a map where keys are nodes reachable from source and values are the shortest distance from source
   std::vector<std::string> shortestPath(const std::string& sourceNode,const std::string& targetNode);
   std::vector<std::string> getShortestPath(const std::string& sourceNode,const std::string& targetNode);
+  std::vector<std::string> getCustomShortestPath(const std::string& src,const std::string& dst);
   //BellmanFord: Returns a 3-tuple containing the Dist and Prev maps, as well as a boolean for the existence of a negative cycle
   std::tuple<std::unordered_map<std::string, double>, std::unordered_map<std::string, std::string>, bool> BellmanFord(std::string sourceNode);
   std::unordered_map<std::string, double> BellmanFordDist(std::string sourceNode); //Returns just the Dist map
@@ -88,7 +200,6 @@ public:
 
   //Persistent Graph Functions
   bool saveGraph(std::string outputFileName);
-
 };
 
 #endif // GRAPH_H

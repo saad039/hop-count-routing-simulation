@@ -553,6 +553,29 @@ std::vector<std::string> Graph::Dijktras(std::string sourceNode, std::string tar
   
   return pathVec;
 }
+std::vector<std::string> Graph:: getCustomShortestPath(const std::string& source,const std::string& dest){
+  myGraph *g = new myGraph(false);
+  int MAXV=g->getMax();
+  int parent[MAXV + 1];
+  int distance[MAXV + 1];
+  int src = std::stoi(source);
+  int dst=std::stoi(dest);
+  std::vector<std::tuple<std::string, std::string, double>> edges=this->getEdges();
+  for(auto& tup:edges)
+    g->insert_edge(std::stoi(std::get<0>(tup)),std::stoi(std::get<1>(tup)),1,false);
+  dijkstra_shortest_path(g, parent, distance, src);
+  std::vector<int> path;
+  print_shortest_path(dst, parent,MAXV,path);
+  if(!path.empty()){
+    path.insert(std::begin(path),dst);
+  }
+  std::reverse(std::begin(path),std::end(path));
+  std::vector<std::string> result;
+  for(auto& v:path)
+    result.push_back(std::to_string(v));
+  return result;
+}
+
 std::vector<std::string> Graph::getShortestPath(const std::string& sourceNode,const std::string& targetNode){
   if(sourceNode==targetNode){
     throw std::logic_error("Distance between same nodes is invalid");

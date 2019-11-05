@@ -33,6 +33,73 @@ extern "C"{
 }
 
 #define BUFFER_SIZE 512
+class eventLoop{
+private:
+typedef std::size_t usint; 
+    static std::unique_ptr<eventLoop> tpInstance; // instance of eventLoop 
+    std::thread tpThread; // vector containing all the threads in the eventLoop
+    std::queue<std::function<void()>>tasks; // vector containing tasks
+    bool doKill=false; // a boolean flag to signal joining of threads
+    std::mutex mutex; // mutex for providing mutual exclusion access to tasks vector
+    std::condition_variable conVar; // condition variable to avoid busy waiting
+
+    eventLoop()
+        :tpThread(std::thread(&eventLoop::start, this))
+    {
+
+    }
+	void start() {
+		for (;;) {
+			std::function<void()> currentTask;
+			{
+				std::unique_lock<std::mutex> lock(mutex);
+				conVar.wait(lock, [&]() {return doKill || !tasks.empty(); });
+				if (this->doKill && tasks.empty())
+					break;
+				currentTask = std::move(this->tasks.front());
+				this->tasks.pop();
+			}
+			currentTask();
+		}
+	}
+	void stop() {
+		{
+			std::unique_lock<std::mutex> lock(mutex);
+			this->doKill = true;
+			conVar.notify_one();
+		}
+		tpThread.join();
+	}
+public:
+
+    static std::unique_ptr<eventLoop>& factory(){
+        if(tpInstance==nullptr)
+            tpInstance.reset(new eventLoop());
+        return tpInstance;
+    }
+    template<typename _type>
+    auto enqueue_task(_type Task) ->std::future<decltype(Task())>
+    {
+        auto lambda=std::make_shared<std::packaged_task<decltype(Task())()>>(Task);
+        {
+			std::unique_lock<std::mutex> lock(mutex); 
+            this->tasks.emplace([=](){
+                (*lambda)();
+            });
+            this->conVar.notify_one();
+        }
+        return lambda->get_future();
+    }
+    eventLoop(const eventLoop&)=delete;
+    eventLoop(const eventLoop&&)=delete;
+    eventLoop& operator=(const eventLoop&)=delete;
+    eventLoop& operator=(const eventLoop&&)=delete;
+    ~eventLoop(){
+       stop();
+    }
+};
+std::unique_ptr<eventLoop> eventLoop::tpInstance(nullptr);
+static  std::unique_ptr<eventLoop>& EventLoop = eventLoop::factory();
 //implement a server. Multiple servers can be run on multiple threads.
 //Each will be listening on a udp port
 
@@ -49,13 +116,14 @@ class RoutingTable{
     //{port,ip}
     std::map <int,std::string> nodes;
     //{srcPort,destPort}
-    std::map<int,int> edges;
+    std::vector<std::pair<int,int>> edges;
     public:
     RoutingTable(bool shouldClear){
-        if(shouldClear){
+        if(shouldClear){ //clears the file in case of first server
             std::ofstream out(fileName,std::ofstream::out | std::ofstream::trunc);
             out.close();
         }
+        deserialize();
         th=std::move(std::thread([&](){
                 while(true){
                     deserialize();
@@ -84,13 +152,26 @@ class RoutingTable{
         }
         serialize();
     }
+    private:
+        void insertEdgeHelper(int srcPort,int destPort){
+            auto it=std::find_if(std::begin(edges),
+                                 std::end(edges),
+                                 [&](const std::pair<int,int>& p){
+                                     return std::get<0>(p)==srcPort &&
+                                            std::get<1>(p)==destPort;
+                                 });
+            if(it==std::end(edges))
+                this->edges.push_back({srcPort,destPort});
+        }
+    public:
+
     void addEdge(int srcPort,int destPort){
         {
             std::unique_lock<std::mutex> lock(mutex);
             this->network.addDualEdge(std::to_string(srcPort),std::to_string(destPort));
-            this->edges.insert({srcPort,destPort});
+            insertEdgeHelper(srcPort,destPort);
         }
-        std::cout<<"Edges are: ---------\n";
+        std::cout<<"Total edges: "<<this->edges.size()<<std::endl;
         for(auto& edge: edges){
             std::cout<<std::get<0>(edge)<<"->"<<std::get<1>(edge)<<std::endl;
         }
@@ -115,12 +196,7 @@ class RoutingTable{
         }
     }
     std::vector<std::string> routingPath(const std::string& src, const std::string& dst){
-        if(!network.pathCheck(src,dst))
-            return std::vector<std::string>();
-        auto p1 =network.getShortestPath(src,dst);
-        auto p2 =network.getShortestPath(dst,src);
-        std::reverse(std::begin(p2),std::end(p2));
-        return p1.size() > p2.size()?  p1   :   p2;
+        return network.getCustomShortestPath(src,dst);
     }
     void deserialize(){
         std::ifstream infile(fileName);
@@ -148,7 +224,7 @@ class RoutingTable{
                 this->network.addDualEdge(tokens[0],tokens[1]);
                 int srcPort=std::stoi(tokens[0]);
                 int destPort=std::stoi(tokens[1]);
-                this->edges.insert({srcPort,destPort});
+                insertEdgeHelper(srcPort,destPort);                
             }
         }
     }
@@ -157,10 +233,13 @@ class RoutingTable{
     }
 };
 class routingServer{
+    int socketfd;
+    struct sockaddr_in servaddr,cliaddr;
+    bool status=false;
+    int routerPort;
+    std::map<int,std::pair<std::string,std::string>> clients; //(r){port,{ip,name}}
+    RoutingTable table;
 public:
-    routingServer(const routingServer&)=delete;
-    routingServer& operator=(const routingServer&)=delete;
-
     routingServer(const int port,bool clear,const char* ip=nullptr)
     :routerPort(port),table(clear) {
         if((this->socketfd=socket(AF_INET,SOCK_DGRAM,0))<0)
@@ -177,91 +256,92 @@ public:
         status=true;
     }
     void receive(){
-         auto data=std::make_unique<char[]>(BUFFER_SIZE);
-         fd_set rdset;
-         FD_SET(this->socketfd,&rdset);
-         int len=sizeof(cliaddr);
-         std::cout<<"Router: is now receiving at port: "<<routerPort<<std::endl;
-         while(true){
-            memset(data.get(),'\0',BUFFER_SIZE);
-            int fds=select(this->socketfd+1,&rdset,NULL,NULL,NULL);
-            if(FD_ISSET(this->socketfd,&rdset)){
-                int bytes_recv=recvfrom(this->socketfd,data.get(),BUFFER_SIZE,0,
-                                        (struct sockaddr*) &cliaddr,(socklen_t*)&len);
-                if(bytes_recv<0)
-                   handleError("Error in receiving data");
-                int cport = (int) ntohs(cliaddr.sin_port); 
-                char *ip = inet_ntoa(cliaddr.sin_addr);
-                //std::cout<<"Sender's port: "<<cport<<std::endl;
-                std::string message(data.get()); 
-                message.erase(std::remove(std::begin(message),
-                        std::end(message),'\n'),std::end(message));
-                std::cout<<"Sender: "<<cport<<", Message: "<<message<<std::endl;  
-                if(message =="HS"){ // a new client establishing connection
-                    //add node and add edge to the graph
-                   table.addNode(cport,ip);
-                   table.addEdge(this->routerPort,cport);
-                   std::cout<<"Client Registered"<<std::endl;
-                }  
-                else{
-                    //packet forwarding(routing)
-                    int hopCount=std::stoi(message.substr(0,message.find('#')));
-                    if(hopCount-1!=0){
-                        message=message.substr(message.find('#')+1);//hop count trimmed
-                        std::string dest=message.substr(0,message.find(':'));//dest is port
-                        std::vector<std::string> route=table.routingPath(
-                            std::to_string(this->routerPort),
-                            std::to_string(cport));
-                        if(route.size()==1){
-                            std::cout<<"Path not available"<<std::endl;
-                        }
-                        else{
-                            const std::string& Dest=route[1];
-                            int destPort=std::stoi(route[1]);
-                            message=message.substr(message.find(':')+1);
-                            if(message.find('$')==std::string::npos){
-                                message+="$";
-                            }
-                            message+=std::to_string(this->routerPort);
-                            message+=',';
-                            int bysent=send(message.c_str(),
-                                table.getIPFromPort(destPort).c_str(),
-                                destPort
-                            );
-                            if(bysent>0)
-                                std::cout<<"Message forwarded: "<<message<<std::endl;
-                            else
-                                std::cout<<"Failed to forward message"<<std::endl;
-                        }    
-                    }    
-                }
+        char data[BUFFER_SIZE];
+        int len = sizeof(cliaddr);
+        std::cout << "Router: is now receiving at port: " << routerPort << std::endl;
+        while (true)
+        {
+            memset(data, '\0', BUFFER_SIZE);
+            int bytes_recv = recvfrom(this->socketfd, data, BUFFER_SIZE, 0,
+                                      (struct sockaddr *)&cliaddr, (socklen_t *)&len);
+            if (bytes_recv < 0)
+                handleError("Error in receiving data");
+            int cport = (int)ntohs(cliaddr.sin_port);
+            char *ip = inet_ntoa(cliaddr.sin_addr);
+            std::string message(data);
+            message.erase(std::remove(std::begin(message),std::end(message), '\n'),std::end(message));
+            if (message == "HS"){
+                // a new client establishing connection
+                //add node and add edge to the graph
+                table.addNode(cport, ip);
+                table.addEdge(this->routerPort, cport);
+                std::cout << "Client Registered" << std::endl;
             }
-         }
+            else{   //packet forwarding(routing)
+                std::cout << "Sender: " << cport << ", Message: " << message << std::endl;
+                int hopCount = std::stoi(message.substr(0, message.find('#')));
+                if (hopCount - 1 != 0){
+                    message = message.substr(message.find('#') + 1);         //hop count trimmed
+                    std::string dest = message.substr(0, message.find(':')); //dest is port
+                    std::cout<<"Dest: "<<dest<<std::endl;
+                    std::vector<std::string> route = table.routingPath(
+                        std::to_string(this->routerPort),
+                        dest);
+                    std::cout<<"----------Printing Route----------"<<std::endl;
+                    for(auto&r: route){
+                        std::cout<<r<<"->";
+                    }
+                    std::cout<<"\n----------Printing  Done----------"<<std::endl;
+                    if (route.size() == 0){
+                        std::cout << "Path not available" << std::endl;
+                    }
+                    else{
+                        int destPort = std::stoi(route[1]);
+                        message = message.substr(message.find(':') + 1);
+                        if (message.find('$') == std::string::npos){
+                            message += "$";
+                        }
+                        message += std::to_string(this->routerPort);
+                        message += ',';
+                        std::string toInsert=std::to_string(hopCount-1);
+                        toInsert+="#";
+                        toInsert+=dest;
+                        toInsert+=':';
+                        message.insert(0,toInsert);
+                        int bysent = send(message,
+                                      table.getIPFromPort(destPort).c_str(),
+                                      destPort);
+                        if (bysent < 0)
+                            std::cout << "Failed to forward message" << std::endl;
+                        else{
+                            std::cout << "message (" << message 
+                            <<") forwarted to destination port: "<<destPort<< std::endl;
+                        }
+                    }
+                }
+                else{
+                    std::cout<<"Packet Dropped"<<std::endl;
+                }
+                
+            }
+        }
     }
-    int send(const char* data,const char* ip,int port){
+    int send(const std::string& data,const std::string& ip,int port){
             struct sockaddr_in destaddr;
             bzero(&destaddr,sizeof(destaddr));
             destaddr.sin_family=AF_INET;
-            if(!ip)
-                destaddr.sin_addr.s_addr=INADDR_ANY;
-            else
-                destaddr.sin_addr.s_addr=inet_addr(ip);
+            destaddr.sin_addr.s_addr=inet_addr(ip.c_str());
             destaddr.sin_port=htons(port);
             int len=sizeof(destaddr);
-            int bytesSend = sendto(this->socketfd, data,BUFFER_SIZE, 0, (struct sockaddr *) &destaddr, len);
+            int bytesSend = sendto(this->socketfd, data.c_str(),data.size()+1, 0, (struct sockaddr *) &destaddr, len);
             return bytesSend;
         }
     ~routingServer(){close(this->socketfd);       }
     bool getStatus() const{return this->status;   }
     int operator() ()const{return this->socketfd; }
-    RoutingTable& getTable(){return this->table;}
-private:
-    int socketfd;
-    struct sockaddr_in servaddr,cliaddr;
-    bool status=false;
-    int routerPort;
-    std::map<int,std::pair<std::string,std::string>> clients; //(r){port,{ip,name}}
-    RoutingTable table;
+    RoutingTable& getTable(){return this->table;  }
+    routingServer(const routingServer&)=delete;
+    routingServer& operator=(const routingServer&)=delete;
 };
 
 //port is same as name
@@ -276,10 +356,10 @@ private:
 ////serverPort,edgeOfServerPort
 
 int main(int argc, char const *argv[]){
-    bool shouldClear=argc==3?true:false;
+    bool shouldClear=argc==3?false:true;
     const char* argv1=argv[1];
     routingServer rs(std::stoi(argv1),shouldClear); //rs is on on port
-    rs.getTable().addNode(std::stoi(argv1),std::string("127.0.0.0"));
+    rs.getTable().addNode(std::stoi(argv1),std::string("127.0.0.1"));
     if(argc==3){
         rs.getTable().addEdge(std::stoi(argv1),std::stoi(argv[2]));
     }
@@ -306,3 +386,5 @@ std::vector<std::string> tokenizer(const std::string& str, const char delimeter)
 		tokens.push_back(temp);
     return std::move(tokens);
 }
+
+

@@ -1,4 +1,4 @@
-<h2>hop-count-routing-simulation</h2>>
+<h2>hop-count-routing-simulation</h2>
 <h6> A hop-count based routing simulation using UDP sockets that using Dijksta's algorithm to calculate the shortest path </h6></br>
 <br><h6> between source and destination.</h6>
 <h2>Dependencies</h2>

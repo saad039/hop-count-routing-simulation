@@ -1,26 +1,24 @@
-# hop-count-routing-simulation #
-<br><h6> A hop-count based routing simulation using UDP sockets that using Dijksta's algorithm to calculate the shortest path </h6></br>
-<br><h6> between source and destination.</br>
-<br># Dependencies #</br>
+<h2>hop-count-routing-simulation</h2>>
+<h6> A hop-count based routing simulation using UDP sockets that using Dijksta's algorithm to calculate the shortest path </h6></br>
+<br><h6> between source and destination.</h6>
+<h2>Dependencies</h2>
 <ul>
 <li>clang v9.0</li>
 <li>c++17</li>
 <li>Boost libaries </li>
 </ul>
-
+<h2>Steps</h2>
 <ul>
-<li>Steps
 <li>Install boost. </li>
 </ul>
-
 <br>```sudo apt-get install libboost-all-dev```</br>
 <ul>
-<li>To build the project, give write permission to the script ```build.sh``` . </li>
+<li>To build the project, give write permission to the script "build.sh" . </li>
 </ul>
 <br>```chmod a+x build.sh```</br>
 </ul>
-<li>To build the project, run the script ```build.sh``` . To generate debug build use the flag debug and use release for  </li>
-     <br>generating release builds.This will generate the server side executable in the bin folder.</br>
+<li>To build the project, run the script "build.sh" . To generate debug build use the flag debug and use release for
+    generating release builds.This will generate the server side executable in the bin folder.</li>
 </ul>
 <br>```./build.sh debug```</br>
 <ul>

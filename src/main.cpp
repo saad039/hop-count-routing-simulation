@@ -42,7 +42,7 @@ void handleError(const char* error){
         exit(-1);
 }
 class RoutingTable{
-    Graph netwgit push -u origin masterork;
+    Graph network;
     const std::string fileName="routing-table.txt";
     std::mutex mutex;
     std::thread th;
